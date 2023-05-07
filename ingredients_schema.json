@@ -1,0 +1,15 @@
+{
+  "ingredients": {
+    "Olive Oil": {
+      "amount_metric": "FLUID_OUNCES",
+      "amount_number": 32,
+      "last_updated_timestamp": 12345678
+    },
+    "Black Beans Can": {
+      "amount_metric": "OUNCES",
+      "amount_number": 16,
+      "last_updated_timestamp": 12345679
+    },
+    ...
+  }
+}
