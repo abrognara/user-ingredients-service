@@ -1,68 +1,105 @@
 package com.brognara.useringredientsservice.repository;
 
-import com.brognara.useringredientsservice.common.MeasurementMetric;
+import com.brognara.useringredientsservice.model.IngredientDetails;
 import com.brognara.useringredientsservice.model.PutIngredientRequest;
-import com.brognara.useringredientsservice.model.UserIngredient;
+import com.brognara.useringredientsservice.model.UserIngredients;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Repository;
+import software.amazon.awssdk.core.SdkBytes;
 import software.amazon.awssdk.services.dynamodb.DynamoDbClient;
 import software.amazon.awssdk.services.dynamodb.model.*;
 
-import java.util.Collections;
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
-import java.util.stream.Collectors;
 
 @Repository
 public class UserIngredientsRepository {
 
+    private static final String TABLE_NAME = "test.users_ingredients.v3";
+
     private final DynamoDbClient dynamoDbClient;
+    private final ObjectMapper objectMapper;
 
     @Autowired
-    public UserIngredientsRepository(final DynamoDbClient dynamoDbClient) {
+    public UserIngredientsRepository(final DynamoDbClient dynamoDbClient, ObjectMapper objectMapper) {
         this.dynamoDbClient = dynamoDbClient;
+        this.objectMapper = objectMapper;
     }
 
-    // TODO will need to scan user_id, or use a random unique PK instead of user_id to be able to query multiple items by a user_id
-    public List<UserIngredient> getUserIngredients(final String userId) {
+    public UserIngredients getUserIngredients(final String userId) {
         Map<String, AttributeValue> primaryKey = Map.of(
-                "user_id", AttributeValue.builder().s(userId).build(),
-                "ingredient_name", AttributeValue.builder().s("Olive Oil").build()
+                "user_id", AttributeValue.builder().s(userId).build()
         );
-        GetItemRequest request = GetItemRequest.builder().key(primaryKey).tableName("test.users_ingredients").build();
+        GetItemRequest request = GetItemRequest.builder().key(primaryKey).tableName(TABLE_NAME).build();
 
         GetItemResponse response = dynamoDbClient.getItem(request);
         if (!response.hasItem())
-            return Collections.emptyList();
+            return null;
 
         System.out.println(response.item().toString());
-        return List.of(mapToUserIngredient(response.item()));
+        return mapToUserIngredient(response.item());
     }
 
-    private UserIngredient mapToUserIngredient(Map<String, AttributeValue> item) {
-        return new UserIngredient(
-                item.get("user_id").s(),
-                item.get("ingredient_name").s(),
-                MeasurementMetric.valueOf(item.get("amount_metric").s()),
-                Float.parseFloat(item.get("amount_number").n()),
-                item.get("timestamp").s()
+    // TODO use m() type instead of bytes
+    private UserIngredients mapToUserIngredient(Map<String, AttributeValue> item) {
+        SdkBytes ingredientsBytes = item.get("ingredients").b();
+        Map<String, IngredientDetails> ingredientNameToDetailsMap;
+        try {
+            ingredientNameToDetailsMap = objectMapper.readValue(ingredientsBytes.asByteArray(), Map.class);
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+        return new UserIngredients(
+                item.get("last_updated_timestamp").s(),
+                ingredientNameToDetailsMap
         );
     }
 
-    public boolean putItem(final String userId, final PutIngredientRequest putIngredientRequest) {
+    public boolean putUserIngredients(final String userId, final PutIngredientRequest putIngredientRequest) {
         Map<String, AttributeValue> userIngredientAttributes = mapToAttributes(userId, putIngredientRequest);
         PutItemRequest putItemRequest = PutItemRequest.builder()
-                .tableName("test.users_ingredients")
+                .tableName(TABLE_NAME)
                 .item(userIngredientAttributes)
                 .build();
         try {
-            dynamoDbClient.putItem(putItemRequest);
+            PutItemResponse response = dynamoDbClient.putItem(putItemRequest);
+            System.out.println("Write consumed capacity: " + response.consumedCapacity());
         } catch (Exception e) {
             System.err.println("Failed to create item in DynamoDb: " + e);
             return false;
         }
         return true;
+    }
+
+    private Map<String, AttributeValue> mapToAttributes
+            (final String userId, final PutIngredientRequest putIngredientRequest) {
+        byte[] bytes;
+        String temp;
+        try {
+            temp = objectMapper.writeValueAsString(putIngredientRequest.getIngredientNameToDetailsMap());
+//            bytes = objectMapper.writeValueAsBytes(putIngredientRequest.getIngredientNameToDetailsMap());
+        } catch (JsonProcessingException e) {
+            throw new RuntimeException(e);
+        }
+        System.out.println("Json str = " + temp);
+        bytes = temp.getBytes(StandardCharsets.UTF_8);
+        System.out.println("Len of ingredients bytes = " + bytes.length);
+
+        System.out.println("user_id = " + userId);
+        System.out.println("timestamp = " + putIngredientRequest.getLastUpdatedTimestamp());
+
+        Map<String, AttributeValue> attributes = new HashMap<>();
+        attributes.put("user_id", AttributeValue.builder().s(userId).build());
+        attributes.put("ingredients",
+                AttributeValue.builder().b(SdkBytes.fromByteArray(bytes)).build());
+        attributes.put("last_updated_timestamp",
+                AttributeValue.builder().s(String.valueOf(putIngredientRequest.getLastUpdatedTimestamp())).build());
+
+        return attributes;
     }
 
     // note: batch allows max 25 req's, 16 MB total
@@ -107,16 +144,5 @@ public class UserIngredientsRepository {
 //        }
 //        return true;
 //    }
-
-    private Map<String, AttributeValue> mapToAttributes
-            (final String userId, final PutIngredientRequest putIngredientRequest) {
-        Map<String, AttributeValue> attributes = new HashMap<>();
-        attributes.put("user_id", AttributeValue.builder().s(userId).build());
-        attributes.put("ingredients",
-                AttributeValue.builder().m(putIngredientRequest.getIngredientNameToDetailsMap()).build());
-        attributes.put("last_updated_timestamp",
-                AttributeValue.builder().s(putIngredientRequest.getLastUpdatedTimestamp()).build());
-        return attributes;
-    }
 
 }

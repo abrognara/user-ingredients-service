@@ -2,6 +2,9 @@ package com.brognara.useringredientsservice.common;
 
 public enum MeasurementMetric {
 
-    FLUID_OUNCES
+    CUPS,
+    FLUID_OUNCES,
+    OUNCES,
+    QUARTS
 
 }
