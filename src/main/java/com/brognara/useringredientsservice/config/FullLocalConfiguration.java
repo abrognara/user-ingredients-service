@@ -10,9 +10,9 @@ import software.amazon.awssdk.services.dynamodb.DynamoDbClient;
 
 import java.net.URI;
 
-@Profile("local")
+@Profile("local-full")
 @Configuration
-public class LocalConfiguration {
+public class FullLocalConfiguration {
 
     @Bean
     public DynamoDbClient dynamoDbClient() {

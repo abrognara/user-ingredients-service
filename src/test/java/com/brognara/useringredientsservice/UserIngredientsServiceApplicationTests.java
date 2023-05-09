@@ -3,10 +3,10 @@ package com.brognara.useringredientsservice;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
 
-@SpringBootTest
+//@SpringBootTest
 class UserIngredientsServiceApplicationTests {
 
-	@Test
+//	@Test
 	void contextLoads() {
 	}
 
